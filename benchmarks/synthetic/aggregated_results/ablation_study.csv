@@ -1,0 +1,25 @@
+property,condition,r2,type
+P1,constant,0.9850163469578104,auxiliary complexity
+P2,constant,0.968524018860461,auxiliary complexity
+P3,constant,0.8909668066327379,auxiliary complexity
+P4,constant,0.7924196662055811,auxiliary complexity
+P5,constant,0.6768107265257842,auxiliary complexity
+P6,constant,0.5692616486726324,auxiliary complexity
+P1,linear,0.9769216907131096,auxiliary complexity
+P2,linear,0.9679977068062406,auxiliary complexity
+P3,linear,0.8945975067483948,auxiliary complexity
+P4,linear,0.8485116204583211,auxiliary complexity
+P5,linear,0.6681208242177906,auxiliary complexity
+P6,linear,0.5592721077879452,auxiliary complexity
+P1,small,0.9769216907131096,embedding size
+P2,small,0.9679977068062406,embedding size
+P3,small,0.8945975067483948,embedding size
+P4,small,0.8485116204583211,embedding size
+P5,small,0.6681208242177906,embedding size
+P6,small,0.5592721077879452,embedding size
+P1,large,0.9902800299548138,embedding size
+P2,large,0.9619851429177935,embedding size
+P3,large,0.9035308466272913,embedding size
+P4,large,0.8266569828564373,embedding size
+P5,large,0.6770168610016003,embedding size
+P6,large,0.5775062935406777,embedding size
