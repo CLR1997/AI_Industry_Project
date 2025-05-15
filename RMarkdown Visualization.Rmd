@@ -1,0 +1,428 @@
+---
+title: "AI Results graphical Analysis"
+author: "Colin Linke"
+date: "2025-03-23"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r files and packages}
+library(ggplot2)
+library(tidyverse)
+
+
+lasso <- read.csv("/Users/colinlinke/Documents/AI in Industry Project/csv files/lasso_results.csv", header = TRUE, sep = ",")
+ridge <- read.csv("/Users/colinlinke/Documents/AI in Industry Project/csv files/ridge_results_rounded.csv", header = TRUE, sep =",")
+l0ridge <- read.csv("/Users/colinlinke/Documents/AI in Industry Project/csv files/l0ridge_results.csv", header = TRUE, sep = ",")
+regular <- read.csv("/Users/colinlinke/Documents/AI in Industry Project/csv files/MSEMAE_results.csv", header = TRUE, sep = ",")
+elastic_net <- read.csv("/Users/colinlinke/Documents/AI in Industry Project/csv files/Elastic_Net_results.csv", header = TRUE, sep =",")
+dynamic <- read.csv("/Users/colinlinke/Documents/AI in Industry Project/csv files/dynamic_results.csv", header = TRUE, sep =",")
+```
+
+
+
+
+```{r regular}
+
+regular_long <- regular %>%
+  select(Loss_Type, In_Dist_MSE, Interp_MSE, Extrap_MSE) %>%
+  pivot_longer(cols = -Loss_Type, names_to = "loss_type", values_to = "Value") %>%
+  mutate(loss_type = recode(loss_type,
+                           "In_Dist_MSE" = "In-Distribution",
+                           "Interp_MSE" = "Interpolation",
+                           "Extrap_MSE" = "Extrapolation"))
+
+
+ggplot(regular_long, aes(x = loss_type, y = Value, fill = Loss_Type)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "MSE Comparison by Loss Type",
+       x = "loss_type",
+       y = "MSE",
+       fill = "Loss Type") +
+  theme_minimal()
+
+regular_r2_long <- regular %>%
+  select(Loss_Type, In_Dist_R2, Interp_R2, Extrap_R2) %>%
+  pivot_longer(cols = -Loss_Type, names_to = "loss_type", values_to = "Value") %>%
+  mutate(loss_type = recode(loss_type,
+                           "In_Dist_R2" = "In-Distribution",
+                           "Interp_R2" = "Interpolation",
+                           "Extrap_R2" = "Extrapolation"))
+
+# Plot R²
+ggplot(regular_r2_long, aes(x = loss_type, y = Value, fill = Loss_Type)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "R^2 Comparison by Loss Type",
+       x = "loss_type",
+       y = "R^2",
+       fill = "Loss Type") +
+  theme_minimal() + coord_cartesian(ylim=c(0.9,NA))
+
+
+
+```
+
+
+
+
+
+```{r lasso graphics}
+# Load necessary libraries
+colnames(lasso) <-c("Lambda", "Train_Time", "MSE_Dist", "R2_Dist",
+                    "MSE_Interp","R2_Interp",   "MSE_Extrap", "R2_Extrap")
+lasso <- lasso[,c(1,2,3,5,7,4,6,8)]
+
+lasso_long <- lasso[-1,] %>%
+  pivot_longer(
+    cols = c("Train_Time", "MSE_Dist", "MSE_Interp", "MSE_Extrap", "R2_Dist", "R2_Interp", "R2_Extrap"),
+    names_to = c("Metric", "Type"),
+    names_pattern = "(.+)_(.+)"
+  ) %>%
+  mutate(value = as.numeric(value))
+
+# Create the grouped bar plot using ggplot2
+
+lasso_R2 <- ggplot(subset(lasso_long, Metric == "R2"), 
+               aes(x = factor(Lambda), y = value, fill = Type)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9)) +
+  labs(
+    x = "Lambda",
+    y = "R^2",
+    title = "lasso R^2 Metrics"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  # scale_y_continuous(limits = c(0.9, 1.01)) +
+  theme_minimal() 
+
+lasso_MSE <- ggplot(subset(lasso_long, Metric == "MSE"), 
+                aes(x = factor(Lambda), y = value, fill = Type)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9)) +
+  labs(
+    x = "Lambda",
+    y = "MSE",
+    title = "MSE Metrics"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+lasso_MSE 
+lasso_R2 + coord_cartesian(ylim=c(0.9,NA))
+#lasso_plot
+
+
+# ggplot(lasso_long, aes(x = factor(Lambda), y = value, fill = Type)) +
+#   geom_bar(stat = "identity", position = position_dodge(width = 0.9)) +
+#   facet_wrap(~ Metric, scales = "free_y") +
+#   labs(
+#     x = "Lambda",
+#     y = "Value",
+#     title = "MSE and R² Metrics for Distribution, Interpolation, and Extrapolation"
+#   ) +
+#   theme_minimal() +
+#   theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+
+```{r lasso ridge regular results}
+lasso_best <- lasso[6,]
+lasso_best$Loss_Type <- "lasso"
+lasso_best <- lasso_best[, c(9,2,3,5,7,4,6,8)]
+lasso_best
+
+ridge_best <- ridge[6,]
+ridge_best$Loss_Type <- "ridge"
+ridge_best <- ridge_best[, c(9,2:8)]
+ridge_best
+
+colnames(lasso_best) <- colnames(regular)
+colnames(ridge_best) <- colnames(regular)
+
+comp1 <- rbind(regular, lasso_best, ridge_best)
+comp1
+
+comp1_long <- comp1 %>%
+  select(Loss_Type, In_Dist_MSE, Interp_MSE, Extrap_MSE) %>%
+  pivot_longer(cols = -Loss_Type, names_to = "loss_type", values_to = "Value") %>%
+  mutate(loss_type = recode(loss_type,
+                           "In_Dist_MSE" = "In-Distribution",
+                           "Interp_MSE" = "Interpolation",
+                           "Extrap_MSE" = "Extrapolation"))
+
+
+ggplot(comp1_long, aes(x = loss_type, y = Value, fill = Loss_Type)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "MSE Comparison by Loss Type",
+       x = "loss_type",
+       y = "MSE",
+       fill = "Loss Type") +
+  theme_minimal() + coord_cartesian(ylim=c(NA,0.1))
+
+
+
+```
+
+
+
+```{r Ridge}
+colnames(ridge) <- c("Lambda", "Train_Time", "MSE_Dist", "MSE_Interp", "MSE_Extrap", "R2_Dist", "R2_Interp", "R2_Extrap")
+
+ridge_long <- ridge[-1,] %>%
+  pivot_longer(
+    cols = c("Train_Time", "MSE_Dist", "MSE_Interp", "MSE_Extrap", "R2_Dist", "R2_Interp", "R2_Extrap"),
+    names_to = c("Metric", "Type"),
+    names_pattern = "(.+)_(.+)"
+  ) %>%
+  mutate(value = as.numeric(value))
+
+# Create the grouped bar plot using ggplot2
+
+ridge_R2 <- ggplot(subset(ridge_long, Metric == "R2"), 
+                   aes(x = factor(Lambda), y = value, fill = Type)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9)) +
+  labs(
+    x = "Lambda",
+    y = "R^2",
+    title = "Ridge R^2 Metrics"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  # scale_y_continuous(limits = c(0.9, 1.01)) +
+  theme_minimal() 
+
+ridge_MSE <- ggplot(subset(ridge_long, Metric == "MSE"), 
+                    aes(x = factor(Lambda), y = value, fill = Type)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9)) +
+  labs(
+    x = "Lambda",
+    y = "MSE",
+    title = "Ridge MSE Metrics"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ridge_MSE 
+ridge_R2 + coord_cartesian(ylim=c(0.9,NA))
+
+```
+
+
+```{r elastic net}
+elastic_net <- elastic_net %>%
+  mutate(
+    Alpha = as.factor(Alpha),
+    Lambda = as.factor(Lambda)
+  )
+
+# Create heatmap
+en_mseD <- ggplot(elastic_net, aes(x = Alpha, y = Lambda, fill = MSE_Dist)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient(low = "steelblue", high = "darkred") +
+  labs(
+    title = "Elastic Net Heatmap MSE Distribution",
+    x = "Alpha",
+    y = "Lambda",
+    fill = "MSE"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+en_mseI <- ggplot(elastic_net[-c(11,28), ], aes(x = Alpha, y = Lambda, fill = MSE_Interp)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient(low = "steelblue", high = "darkred") +
+  labs(
+    title = "Elastic Net Heatmap MSE Interpolation",
+    x = "Alpha",
+    y = "Lambda",
+    fill = "MSE"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+en_mseE <- ggplot(elastic_net, aes(x = Alpha, y = Lambda, fill = MSE_Extrap)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient(low = "steelblue", high = "darkred") +
+  labs(
+    title = "Elastic Net Heatmap MSE Extrapolation",
+    x = "Alpha",
+    y = "Lambda",
+    fill = "MSE"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+en_R2D <- ggplot(elastic_net, aes(x = Alpha, y = Lambda, fill = R2_Dist)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient(low = "yellow", high = "purple") +
+  labs(
+    title = "Elastic Net Heatmap R^2 Distribution",
+    x = "Alpha",
+    y = "Lambda",
+    fill = "R^2"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+en_R2I <- ggplot(elastic_net[-c(11,28), ], aes(x = Alpha, y = Lambda, fill = R2_Interp)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient(low = "yellow", high = "purple") +
+  labs(
+    title = "Elastic Net Heatmap R^2 Interpolation",
+    x = "Alpha",
+    y = "Lambda",
+    fill = "R^2"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+en_R2E <- ggplot(elastic_net, aes(x = Alpha, y = Lambda, fill = R2_Extrap)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient(low = "yellow", high = "purple") +
+  labs(
+    title = "Elastic Net Heatmap R^2 Extrapolation",
+    x = "Alpha",
+    y = "Lambda",
+    fill = "R^2"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+en_mseD
+en_mseI
+en_mseE
+en_R2D
+en_R2I
+en_R2E
+
+```
+
+```{r best EN results}
+en_lasso <- elastic_net %>%
+  filter(Alpha == 0.1) 
+en_lasso
+
+en_lbest <- en_lasso[4,]
+en_lbest
+## alpha 0.1 lambda 0.0005
+
+
+en_ridge <- elastic_net %>%
+  filter(Alpha == 0.9)
+en_ridge
+
+en_rbest <- en_ridge[1,]
+en_rbest
+## alpha 0.9 lambda 0.0001
+
+en_lbest$Loss_Type <- "EN Lasso"
+en_rbest$Loss_Type <- "EN Ridge"
+en_lbest <- en_lbest[, -c(1,2)] 
+en_rbest <- en_rbest[, -c(1,2)] 
+
+en_results <- rbind(en_lbest, en_rbest)
+en_results <- en_results[,c(8, 1:7)]
+en_results
+colnames(en_results) <- colnames(regular)
+en_results
+comp2 <- rbind(regular, en_results)
+comp2
+
+
+comp2_long <- comp2 %>%
+  select(Loss_Type, In_Dist_MSE, Interp_MSE, Extrap_MSE) %>%
+  pivot_longer(cols = -Loss_Type, names_to = "loss_type", values_to = "Value") %>%
+  mutate(loss_type = recode(loss_type,
+                           "In_Dist_MSE" = "In-Distribution",
+                           "Interp_MSE" = "Interpolation",
+                           "Extrap_MSE" = "Extrapolation"))
+
+
+ggplot(comp2_long, aes(x = loss_type, y = Value, fill = Loss_Type)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "MSE Comparison by Loss Type",
+       x = "loss_type",
+       y = "MSE",
+       fill = "Loss Type") +
+  theme_minimal() + coord_cartesian(ylim=c(NA,0.1))
+
+
+
+
+
+
+```
+
+
+
+```{r l0ridge}
+l0r_mse <- l0ridge %>%
+  select(l0_pen, MSE_Dist, MSE_Interp, MSE_Extrap) %>%
+  pivot_longer(cols = starts_with("MSE"), names_to = "Metric", values_to = "Value")
+
+# Plot MSE
+l0r_MSE <- ggplot(l0r_mse, aes(x = factor(l0_pen), y = Value, fill = Metric)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "l0-ridge MSE Metrics, lambda = 0.0008",
+       x = "l0_pen",
+       y = "MSE",
+       fill = "Metric") +
+  theme_minimal()
+
+l0r_r2 <- l0ridge %>%
+  select(l0_pen, R2_Dist, R2_Interp, R2_Extrap) %>%
+  pivot_longer(cols = starts_with("R2"), names_to = "Metric", values_to = "Value")
+
+# Plot R2
+l0r_R2 <- ggplot(l0r_r2, aes(x = factor(l0_pen), y = Value, fill = Metric)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "l0-ridge R2 Metrics, lambda = 0.0008",
+       x = "l0_pen",
+       y = expression(R^2),
+       fill = "Metric") +
+  theme_minimal()
+
+
+l0r_MSE
+l0r_R2 + coord_cartesian(ylim=c(0.9,NA))
+
+```
+
+```{r}
+l0r_best <- l0ridge %>% filter(l0_pen == 10)
+l0r_best$Loss_Type <- "l0ridge"
+l0r_best <- l0r_best[,c(10, 3:9)]
+colnames(l0r_best) <- colnames(regular)
+comp3 <- rbind(regular, l0r_best)
+comp3
+
+
+
+comp3_long <- comp3 %>%
+  select(Loss_Type, In_Dist_MSE, Interp_MSE, Extrap_MSE) %>%
+  pivot_longer(cols = -Loss_Type, names_to = "loss_type", values_to = "Value") %>%
+  mutate(loss_type = recode(loss_type,
+                           "In_Dist_MSE" = "In-Distribution",
+                           "Interp_MSE" = "Interpolation",
+                           "Extrap_MSE" = "Extrapolation"))
+
+
+ggplot(comp3_long, aes(x = loss_type, y = Value, fill = Loss_Type)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "MSE Comparison by Loss Type",
+       x = "loss_type",
+       y = "MSE",
+       fill = "Loss Type") +
+  theme_minimal()
+
+```
+
+
+
+
+
+
+
+
