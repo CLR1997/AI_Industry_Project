@@ -4,6 +4,13 @@ import pickle
 import tensorflow as tf
 from tensorflow import keras
 import numpy as np
+
+project_root = os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+
+# Add paths to Python path
+sys.path.insert(0, os.path.join(project_root, 'core'))
+sys.path.insert(0, project_root)
+
 from core.optimization import *
 np.seterr(invalid='ignore')
 
@@ -149,9 +156,26 @@ class ITP(keras.Model):
 ####################################################################################################
 # Safe
 ####################################################################################################
+#### loss_type = 'mae' , 'mse' , 'lasso' , 'ridge' , 'elastic_net', 'l0_ridge'
+#### dynamic = 'yes' , 'no'
 class SMLE(keras.Model):
-    def __init__(self, mode, P, p, R, r, h, h_lower, h_upper, g=None, g_poly=None, safe_train=True, log_dir=None, **kwargs):
+    def __init__(self, mode, P, p, R, r, h, h_lower, h_upper, loss_type = 'elastic_net', g=None, g_poly=None, safe_train=True, log_dir=None, 
+                l0_pen=10.0, dynamic = 'no', lam=0.0001, alpha=0.5, **kwargs):
         super().__init__(**kwargs)
+        #########################################################
+        # For Colin: use your preferred variable names and values
+        self.loss_type = loss_type
+        self.l0_pen = l0_pen     #### penalization parameter for non zero parameter in the model 
+        self.dynamic = dynamic
+        if self.dynamic == 'no':
+            self.lam = lam       #### lambda setting how strong the regularization is
+            self.alpha = alpha   #### parameter determining the mixture between lasso and ridge regularization for the elastic net
+        else:
+            self.lam = tf.Variable(initial_value=lam, dtype=tf.float32, trainable=True, constraint=lambda x: tf.nn.relu(x))
+            self.alpha = tf.Variable(initial_value=alpha, dtype=tf.float32, trainable=True, constraint=lambda x: tf.nn.relu(x))
+
+        #########################################################
+
         self.mode = mode
         self.log_dir = log_dir
         self.P = P 
@@ -172,19 +196,99 @@ class SMLE(keras.Model):
         # Set the counterexample cash size to 1 or 10, as specified in the paragraph reporting the Q1 results
         self.CM = CashManager(max_size=1) if self.mode == 'regression' else CashManager(max_size=10)
         self.WP = WeightProjection(R=R, r=r, mode=self.mode)
-
+        print(self.loss_type, self.lam, self.dynamic, self.alpha)
+    #########################################################
+    # For Colin: complete the following code snippet -- use your preferred function names and substitute "others" with all the additional parameters you may need
+    def mae(self, y_true, y_pred):
+        mae = tf.reduce_mean(tf.abs(y_true - y_pred), axis=1)
+        return mae
+   
+   #### defining the mse again is probably not needed, but this is to be thorough 
+    def mse(self, y_true, y_pred):
+        mse = tf.reduce_mean(tf.reduce_mean((y_true - y_pred) ** 2, axis=1))
+        #mse = tf.reduce_mean(tf.keras.losses.mean_squared_error(y, y_pred))
+        return mse 
     
+    def ridge(self, y_true, y_pred, lam):
+        mse = tf.reduce_mean(tf.reduce_mean((y_true - y_pred) ** 2, axis=1))
+        ridge_loss = self.lam * tf.add_n([tf.nn.l2_loss(var) for var in self.trainable_variables])
+        return mse + ridge_loss 
+    
+    def ridge_dynamic(self, y_true, y_pred):
+        mse = tf.reduce_mean(tf.reduce_mean((y_true - y_pred) ** 2, axis=1))
+        ridge_loss = self.lam * tf.add_n([tf.nn.l2_loss(var) for var in self.trainable_variables])
+        return mse + ridge_loss 
+    
+    def lasso(self, y_true, y_pred, lam):
+        mse = tf.reduce_mean(tf.reduce_mean((y_true - y_pred) ** 2, axis=1))
+        lasso_loss = self.lam * tf.reduce_sum([tf.reduce_sum(tf.abs(var)) for var in self.trainable_variables]) 
+        return mse + lasso_loss
+    
+    def lasso_dynamic(self, y_true, y_pred):
+        mse = tf.reduce_mean(tf.reduce_mean((y_true - y_pred) ** 2, axis=1))
+        lasso_loss = self.lam * tf.reduce_sum([tf.reduce_sum(tf.abs(var)) for var in self.trainable_variables]) 
+        return mse + lasso_loss
+    
+    #### chosen here, unified elastic net. Can be expanded on by being fine tuned for alpha 
+    def elastic_net(self, y_true, y_pred, lam, alpha):
+        mse = tf.reduce_mean(tf.reduce_mean((y_true - y_pred) ** 2, axis=1))
+        ridge_loss = self.lam * tf.add_n([tf.nn.l2_loss(var) for var in self.trainable_variables])
+        lasso_loss = self.lam * tf.reduce_sum([tf.reduce_sum(tf.abs(var)) for var in self.trainable_variables]) 
+        return mse + alpha * lasso_loss + (1-alpha) * ridge_loss
+    
+    def elastic_net_dynamic(self, y_true, y_pred):
+        mse = tf.reduce_mean(tf.reduce_mean((y_true - y_pred) ** 2, axis=1))
+        ridge_loss = self.lam * tf.add_n([tf.nn.l2_loss(var) for var in self.trainable_variables])
+        lasso_loss = self.lam * tf.reduce_sum([tf.reduce_sum(tf.abs(var)) for var in self.trainable_variables]) 
+        return mse + self.alpha * lasso_loss + (1- self.alpha) * ridge_loss
+
+    def l0_ridge(self, y_true, y_pred, lam, l0_pen):
+        mse = tf.reduce_mean(tf.reduce_mean((y_true - y_pred) ** 2, axis=1))
+        l0_loss = self.l0_pen * tf.reduce_sum([tf.reduce_sum(tf.cast(var != 0, tf.float32)) for var in self.trainable_variables])
+        ridge_loss = self.lam * tf.add_n([tf.nn.l2_loss(var) for var in self.trainable_variables])
+        return mse + l0_loss + ridge_loss
+
     def train_step(self, data):
         # Implement the Robust Training Algorithm (Algorithm 2)
         x, y = data
 
         with tf.GradientTape() as tape:
             y_pred = self(x)
-            loss = self.compute_loss(y=y, y_pred=y_pred)
+            #### y_pred = self(x)   to implement the regularization, I let the the input x be changed directly with the parameters.
+            x_gt = self(x)
+            #########################################################
+            # For Colin: adjust the following code snippet as needed
+            
+            # if self.l0_r is not None and self.l0_r > 0:
+            #      x_gt = tf.where(tf.abs(x_gt) < self.l0_r, tf.stop_gradient(x_gt * 0.0), x_gt)
+            
+            # y_pred = x_gt
+            if self.dynamic == 'no':
+                if self.loss_type == 'default' or self.loss_type == 'mse':
+                    loss = self.mse(y_true=y, y_pred=y_pred)
+                elif self.loss_type == 'mae':
+                    loss = self.mae(y_true=y, y_pred=y_pred)
+                elif self.loss_type == 'lasso':
+                    loss = self.lasso(y_true=y, y_pred=x_gt, lam=self.lam)
+                elif self.loss_type == 'ridge':
+                    loss = self.ridge(y_true=y, y_pred=y_pred, lam = self.lam)
+                elif self.loss_type == 'elastic_net':
+                    loss = self.elastic_net(y_true=y, y_pred=y_pred, lam = self.lam, alpha = self.alpha)
+                elif self.loss_type == 'l0_ridge':
+                    loss = self.l0_ridge(y_true=y, y_pred=y_pred, lam = self.lam, l0_pen = self.l0_pen)
+            elif self.dynamic == 'yes':
+                if self.loss_type == 'lasso':
+                    loss = self.lasso_dynamic(y_true=y, y_pred=x_gt)
+                elif self.loss_type == 'ridge':
+                    loss = self.ridge_dynamic(y_true=y, y_pred=y_pred)
+                elif self.loss_type == 'elastic_net':
+                    loss = self.elastic_net_dynamic(y_true=y, y_pred=y_pred)
         
         trainable_vars = self.trainable_variables
         gradients = tape.gradient(loss, trainable_vars)
         self.optimizer.apply_gradients(zip(gradients, trainable_vars))
+        if self.dynamic == 'yes':
+            print(f"Updated λ: {self.lam.numpy()}")
 
         if self.safe_train:
             W, w = self.g_poly.get_weights()
@@ -235,3 +339,7 @@ class SMLE(keras.Model):
             return outputs
         elif self.mode == 'multilabel-classification':
             return tf.nn.sigmoid(outputs)
+ 
+
+
+
