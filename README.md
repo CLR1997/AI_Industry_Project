@@ -1,5 +1,7 @@
 # SMLE: Safe Machine Learning via Embedded Overapproximation
 
+This project was primarily coded / written / conceived by Francobaldi & professor Lombardi, the original github repository can be found here https://github.com/Francobaldi/SMLE-AAAI2025  All citations, replicas, licenses should be done / requested from them exclusively. Additionally, the presentation  file contain the results from my experiments, the markdown rmd / html file contain the generated plots. This was done through R, as I prefer using it for descriptive data analysis in R. The Rest of the read me is taken from the original repository.
+
 ## Description
 This repository allows for the reproduction of the findings reported in the manuscript __"SMLE: Safe Machine Learning via Embedded Overapproximation"__, submitted to __AAAI 2025 AI Alignment Track__ and currently under revision.
 
